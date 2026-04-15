@@ -1,0 +1,5 @@
+[workspace]
+members = ["macros", "core"]
+resolver = "2"
+
+default-members = ["core"]
