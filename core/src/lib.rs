@@ -16,6 +16,9 @@
 
 mod r#struct;
 mod ext_type;
+mod ser;
+mod de;
+mod error;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Result, Value};
