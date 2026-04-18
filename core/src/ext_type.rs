@@ -1,25 +1,31 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap};
 use std::ops::{Deref, DerefMut};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct IdMap<T>{
-  inner: BTreeMap<i64, T>,
+pub const TOKEN: &str = "IdMap";
+
+#[derive(Serialize, Deserialize)]
+pub struct IdMap<T>(BTreeMap<i64, T>);
+
+impl<T> IdMap<T>{
+  pub fn new() -> Self{
+    IdMap(BTreeMap::new())
+  }
 }
 
 impl<T> Deref for IdMap<T>{
   type Target = BTreeMap<i64, T>;
-
   fn deref(&self) -> &Self::Target{
-    &self.inner
+    &self.0
   }
 }
 
 impl<T> DerefMut for IdMap<T>{
   fn deref_mut(&mut self) -> &mut Self::Target{
-    &mut self.inner
+    &mut self.0
   }
 }
+
 
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
