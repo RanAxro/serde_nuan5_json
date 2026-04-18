@@ -2,7 +2,7 @@ use std::collections::{BTreeMap};
 use std::ops::{Deref, DerefMut};
 use serde::{Deserialize, Serialize};
 
-pub const TOKEN: &str = "IdMap";
+pub const ID_MAP_TOKEN: &str = "IdMap";
 
 #[derive(Serialize, Deserialize)]
 pub struct IdMap<T>(BTreeMap<i64, T>);
