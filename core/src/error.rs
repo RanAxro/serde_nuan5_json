@@ -1,5 +1,5 @@
 use std::fmt::{Debug, Display, Formatter};
-use serde::ser;
+use serde::{ser, de};
 
 #[derive(Debug)]
 pub struct Error{
@@ -9,12 +9,18 @@ pub struct Error{
 }
 
 impl Error{
+  #[cold]
   pub fn code(code: ErrorCode) -> Self{
-    Self{
+    Error{
       column: 0,
       line: 0,
       code,
     }
+  }
+
+  #[cold]
+  pub fn syntax(code: ErrorCode, line: usize, column: usize) -> Self{
+    Error{column, line, code}
   }
 }
 
@@ -37,10 +43,45 @@ impl ser::Error for Error{
   }
 }
 
+impl de::Error for Error{
+  fn custom<T>(msg: T) -> Self
+  where
+    T: Display
+  {
+    Error{
+      column: 0,
+      line: 0,
+      code: ErrorCode::Message(msg.to_string()),
+    }
+  }
+}
+
 #[derive(Debug)]
 pub enum ErrorCode{
   KeyMustBeAString,
   FloatKeyMustBeFinite,
   IdMapKeyMustBeAnInteger,
+  EofWhileParsingValue,
+  EofWhileParsingString,
+  EofWhileParsingObject,
+  EofWhileParsingArray,
+  EofWhileParsingIdMap,
+  ExpectedSomeIdent,
+  ExpectedSomeValue,
+  InvalidNumber,
+  NumberOutOfRange,
+  InvalidUnicodeCodePoint,
+  ControlCharacterWhileParsingString,
+  InvalidEscape,
+  LoneLeadingSurrogateInHexEscape,
+  UnexpectedEndOfHexEscape,
+  RecursionLimitExceeded,
+  ExpectedColon,
+  TrailingComma,
+  TrailingCharacters,
+  ExpectedObjectCommaOrEnd,
+  ExpectedArrayCommaOrEnd,
+  ExpectedNumericKey,
+  ExpectedDoubleQuote,
   Message(String),
 }
