@@ -24,6 +24,38 @@ for instance:
 
 ---
 
+You can use `IdMap` just like `BTreeMap`.
+```rust
+let mut id_map = IdMap::new();
+id_map.insert(10008, false);
+```
+It is defined as follows:
+```rust
+#[derive(Serialize, Deserialize)]
+pub struct IdMap<T>(BTreeMap<i64, T>);
+
+impl<T> IdMap<T>{
+  pub fn new() -> Self{
+    IdMap(BTreeMap::new())
+  }
+}
+
+impl<T> Deref for IdMap<T>{
+  type Target = BTreeMap<i64, T>;
+  fn deref(&self) -> &Self::Target{
+    &self.0
+  }
+}
+
+impl<T> DerefMut for IdMap<T>{
+  fn deref_mut(&mut self) -> &mut Self::Target{
+    &mut self.0
+  }
+}
+```
+
+---
+
 Additionally, I have defined the **AdaptiveArray** and **OptionMap** types, which have the following characteristics:
 
 * **AdaptiveArray**:  
