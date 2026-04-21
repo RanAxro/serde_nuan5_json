@@ -57,31 +57,45 @@ impl de::Error for Error{
 }
 
 #[derive(Debug)]
-pub enum ErrorCode{
-  KeyMustBeAString,
-  FloatKeyMustBeFinite,
-  IdMapKeyMustBeAnInteger,
-  EofWhileParsingValue,
-  EofWhileParsingString,
-  EofWhileParsingObject,
-  EofWhileParsingArray,
-  EofWhileParsingIdMap,
-  ExpectedSomeIdent,
+pub enum ErrorCode {
+  // ===== 值类型错误 =====
   ExpectedSomeValue,
+  ExpectedSomeIdent,
   InvalidNumber,
   NumberOutOfRange,
   InvalidUnicodeCodePoint,
+
+  // ===== 字符串解析错误 =====
+  ExpectedDoubleQuote,
+  EofWhileParsingString,
   ControlCharacterWhileParsingString,
   InvalidEscape,
   LoneLeadingSurrogateInHexEscape,
   UnexpectedEndOfHexEscape,
-  RecursionLimitExceeded,
-  ExpectedColon,
-  TrailingComma,
-  TrailingCharacters,
-  ExpectedObjectCommaOrEnd,
-  ExpectedArrayCommaOrEnd,
+
+  // ===== 键相关错误 =====
+  KeyMustBeAString,
+  FloatKeyMustBeFinite,
+  IdMapKeyMustBeAnInteger,
   ExpectedNumericKey,
-  ExpectedDoubleQuote,
+
+  // ===== 对象/Map 解析错误 =====
+  EofWhileParsingObject,
+  ExpectedColon,
+  ExpectedColonAtStart,
+  ExpectedObjectCommaOrEnd,
+  TrailingComma,
+  EofWhileParsingIdMap,
+
+  // ===== 数组解析错误 =====
+  EofWhileParsingArray,
+  ExpectedArrayCommaOrEnd,
+
+  // ===== 通用解析状态错误 =====
+  EofWhileParsingValue,
+  TrailingCharacters,
+  RecursionLimitExceeded,
+
+  // ===== 通用消息 =====
   Message(String),
 }
