@@ -1,72 +1,24 @@
 use std::cmp;
 use std::ops::Deref;
-use delegate::delegate;
-use memchr::memchr;
 use crate::ext_type::ID_MAP_TOKEN;
 use crate::error::{Error, ErrorCode};
 use serde::{de, forward_to_deserialize_any};
 use serde::de::{Expected, Unexpected, Visitor};
 
-macro_rules! overflow{
-  ($a:ident * 10 + $b:ident, $c:expr) => {
-    match $c{
-      c => $a >= c / 10 && ($a > c / 10 || $b > c % 10),
-    }
-  };
-}
 
-#[cfg(not(feature = "unbounded_depth"))]
-macro_rules! if_checking_recursion_limit{
-  ($($body:tt)*) => {
-    $($body)*
-  };
-}
 
-macro_rules! check_recursion{
-  ($this:ident $($body:tt)*) => {
-    if_checking_recursion_limit!{
-      $this.remaining_depth -= 1;
-      if $this.remaining_depth == 0 {
-        return Err($this.peek_error(ErrorCode::RecursionLimitExceeded));
-      }
-    }
-
-    $this $($body)*
-
-    if_checking_recursion_limit!{
-      $this.remaining_depth += 1;
-    }
-  };
-}
-
-macro_rules! deserialize_number{
-  ($method:ident) => {
-    deserialize_number!($method, deserialize_number);
-  };
-
-  ($method:ident, $using:ident) => {
-    fn $method<V>(self, visitor: V) -> Result<V::Value, Error>
-    where
-      V: de::Visitor<'de>,
-    {
-      self.$using(visitor)
-    }
-  };
-}
-
-type Input = Vec<u8>;
+type Input<'a> = &'a [u8];
 
 /// A structure that deserializes nuan5json into Rust values.
 pub struct Deserializer<'a>{
-  input: &'a [u8],
+  input: Input<'a>,
   index: usize,
   scratch: Vec<u8>,
   remaining_depth: u8,
 }
 
-
 impl<'a> Deserializer<'a>{
-  pub fn new(input: &'a [u8]) -> Self{
+  pub fn new(input: Input<'a>) -> Self{
     Deserializer{
       input,
       index: 0,
@@ -76,6 +28,13 @@ impl<'a> Deserializer<'a>{
   }
 }
 
+
+pub struct Position{
+  pub line: usize,
+  pub column: usize,
+}
+
+/// error
 impl<'a> Deserializer<'a>{
   #[cold]
   fn position_of_index(&self, i: usize) -> Position{
@@ -164,8 +123,19 @@ impl<'a> Deserializer<'a>{
       Err(err) => err
     }
   }
+
+  /// The `Deserializer::end` method should be called after a value has been fully deserialized.
+  /// This allows the `Deserializer` to validate that the input is at the end or that it
+  /// only has trailing whitespace.
+  pub fn end(&mut self) -> Result<(), Error>{
+    match self.parse_whitespace(){
+      Some(_) => Err(self.peek_error(ErrorCode::TrailingCharacters)),
+      None => Ok(()),
+    }
+  }
 }
 
+/// deserialize_number
 impl<'a> Deserializer<'a>{
   pub fn deserialize_number<'any, V>(&mut self, visitor: V) -> Result<V::Value, Error>
   where
@@ -222,7 +192,7 @@ impl<'a> Deserializer<'a>{
     match buf.parse(){
       Ok(int) => visitor.visit_u128(int),
       Err(_) => {
-        return Err(self.error(ErrorCode::NumberOutOfRange));
+        Err(self.error(ErrorCode::NumberOutOfRange))
       }
     }
   }
@@ -250,6 +220,7 @@ impl<'a> Deserializer<'a>{
   }
 }
 
+/// parse mediocrity
 impl<'a> Deserializer<'a>{
   #[inline]
   fn next(&mut self) -> Option<u8>{
@@ -346,13 +317,168 @@ impl<'a> Deserializer<'a>{
 
     Ok(())
   }
+}
 
+/// Adds a WTF-8 codepoint to the end of the buffer. This is a more efficient
+/// implementation of String::push. The codepoint may be a surrogate.
+#[inline]
+fn push_wtf8_codepoint(n: u32, scratch: &mut Vec<u8>) {
+  if n < 0x80 {
+    scratch.push(n as u8);
+    return;
+  }
 
+  scratch.reserve(4);
 
+  // SAFETY: After the `reserve` call, `scratch` has at least 4 bytes of
+  // allocated but uninitialized memory after its last initialized byte, which
+  // is where `ptr` points. All reachable match arms write `encoded_len` bytes
+  // to that region and update the length accordingly, and `encoded_len` is
+  // always <= 4.
+  unsafe {
+    let ptr = scratch.as_mut_ptr().add(scratch.len());
 
+    let encoded_len = match n {
+      0..=0x7F => unreachable!(),
+      0x80..=0x7FF => {
+        ptr.write(((n >> 6) & 0b0001_1111) as u8 | 0b1100_0000);
+        2
+      }
+      0x800..=0xFFFF => {
+        ptr.write(((n >> 12) & 0b0000_1111) as u8 | 0b1110_0000);
+        ptr.add(1)
+          .write(((n >> 6) & 0b0011_1111) as u8 | 0b1000_0000);
+        3
+      }
+      0x1_0000..=0x10_FFFF => {
+        ptr.write(((n >> 18) & 0b0000_0111) as u8 | 0b1111_0000);
+        ptr.add(1)
+          .write(((n >> 12) & 0b0011_1111) as u8 | 0b1000_0000);
+        ptr.add(2)
+          .write(((n >> 6) & 0b0011_1111) as u8 | 0b1000_0000);
+        4
+      }
+      0x11_0000.. => unreachable!(),
+    };
+    ptr.add(encoded_len - 1)
+      .write((n & 0b0011_1111) as u8 | 0b1000_0000);
 
+    scratch.set_len(scratch.len() + encoded_len);
+  }
+}
 
+const fn decode_hex_val_slow(val: u8) -> Option<u8>{
+  match val{
+    b'0'..=b'9' => Some(val - b'0'),
+    b'A'..=b'F' => Some(val - b'A' + 10),
+    b'a'..=b'f' => Some(val - b'a' + 10),
+    _ => None,
+  }
+}
 
+const fn build_hex_table(shift: usize) -> [i16; 256]{
+  let mut table = [0; 256];
+  let mut ch = 0;
+  while ch < 256{
+    table[ch] = match decode_hex_val_slow(ch as u8){
+      Some(val) => (val as i16) << shift,
+      None => -1,
+    };
+    ch += 1;
+  }
+  table
+}
+
+static HEX0: [i16; 256] = build_hex_table(0);
+static HEX1: [i16; 256] = build_hex_table(4);
+
+fn decode_four_hex_digits(a: u8, b: u8, c: u8, d: u8) -> Option<u16>{
+  let a = HEX1[a as usize] as i32;
+  let b = HEX0[b as usize] as i32;
+  let c = HEX1[c as usize] as i32;
+  let d = HEX0[d as usize] as i32;
+
+  let codepoint = ((a | b) << 8) | c | d;
+
+  // A single sign bit check.
+  if codepoint >= 0 {
+    Some(codepoint as u16)
+  }else{
+    None
+  }
+}
+
+static POW10: [f64; 309] = [
+  1e000, 1e001, 1e002, 1e003, 1e004, 1e005, 1e006, 1e007, 1e008, 1e009, //
+  1e010, 1e011, 1e012, 1e013, 1e014, 1e015, 1e016, 1e017, 1e018, 1e019, //
+  1e020, 1e021, 1e022, 1e023, 1e024, 1e025, 1e026, 1e027, 1e028, 1e029, //
+  1e030, 1e031, 1e032, 1e033, 1e034, 1e035, 1e036, 1e037, 1e038, 1e039, //
+  1e040, 1e041, 1e042, 1e043, 1e044, 1e045, 1e046, 1e047, 1e048, 1e049, //
+  1e050, 1e051, 1e052, 1e053, 1e054, 1e055, 1e056, 1e057, 1e058, 1e059, //
+  1e060, 1e061, 1e062, 1e063, 1e064, 1e065, 1e066, 1e067, 1e068, 1e069, //
+  1e070, 1e071, 1e072, 1e073, 1e074, 1e075, 1e076, 1e077, 1e078, 1e079, //
+  1e080, 1e081, 1e082, 1e083, 1e084, 1e085, 1e086, 1e087, 1e088, 1e089, //
+  1e090, 1e091, 1e092, 1e093, 1e094, 1e095, 1e096, 1e097, 1e098, 1e099, //
+  1e100, 1e101, 1e102, 1e103, 1e104, 1e105, 1e106, 1e107, 1e108, 1e109, //
+  1e110, 1e111, 1e112, 1e113, 1e114, 1e115, 1e116, 1e117, 1e118, 1e119, //
+  1e120, 1e121, 1e122, 1e123, 1e124, 1e125, 1e126, 1e127, 1e128, 1e129, //
+  1e130, 1e131, 1e132, 1e133, 1e134, 1e135, 1e136, 1e137, 1e138, 1e139, //
+  1e140, 1e141, 1e142, 1e143, 1e144, 1e145, 1e146, 1e147, 1e148, 1e149, //
+  1e150, 1e151, 1e152, 1e153, 1e154, 1e155, 1e156, 1e157, 1e158, 1e159, //
+  1e160, 1e161, 1e162, 1e163, 1e164, 1e165, 1e166, 1e167, 1e168, 1e169, //
+  1e170, 1e171, 1e172, 1e173, 1e174, 1e175, 1e176, 1e177, 1e178, 1e179, //
+  1e180, 1e181, 1e182, 1e183, 1e184, 1e185, 1e186, 1e187, 1e188, 1e189, //
+  1e190, 1e191, 1e192, 1e193, 1e194, 1e195, 1e196, 1e197, 1e198, 1e199, //
+  1e200, 1e201, 1e202, 1e203, 1e204, 1e205, 1e206, 1e207, 1e208, 1e209, //
+  1e210, 1e211, 1e212, 1e213, 1e214, 1e215, 1e216, 1e217, 1e218, 1e219, //
+  1e220, 1e221, 1e222, 1e223, 1e224, 1e225, 1e226, 1e227, 1e228, 1e229, //
+  1e230, 1e231, 1e232, 1e233, 1e234, 1e235, 1e236, 1e237, 1e238, 1e239, //
+  1e240, 1e241, 1e242, 1e243, 1e244, 1e245, 1e246, 1e247, 1e248, 1e249, //
+  1e250, 1e251, 1e252, 1e253, 1e254, 1e255, 1e256, 1e257, 1e258, 1e259, //
+  1e260, 1e261, 1e262, 1e263, 1e264, 1e265, 1e266, 1e267, 1e268, 1e269, //
+  1e270, 1e271, 1e272, 1e273, 1e274, 1e275, 1e276, 1e277, 1e278, 1e279, //
+  1e280, 1e281, 1e282, 1e283, 1e284, 1e285, 1e286, 1e287, 1e288, 1e289, //
+  1e290, 1e291, 1e292, 1e293, 1e294, 1e295, 1e296, 1e297, 1e298, 1e299, //
+  1e300, 1e301, 1e302, 1e303, 1e304, 1e305, 1e306, 1e307, 1e308,
+];
+
+pub(crate) enum ParserNumber{
+  F64(f64),
+  U64(u64),
+  I64(i64),
+}
+
+impl ParserNumber{
+  fn visit<'de, V>(self, visitor: V) -> Result<V::Value, Error>
+  where
+    V: Visitor<'de>,
+  {
+    match self {
+      ParserNumber::F64(x) => visitor.visit_f64(x),
+      ParserNumber::U64(x) => visitor.visit_u64(x),
+      ParserNumber::I64(x) => visitor.visit_i64(x),
+    }
+  }
+
+  fn invalid_type(self, exp: &dyn Expected) -> Error{
+    match self {
+      ParserNumber::F64(x) => de::Error::invalid_type(Unexpected::Float(x), exp),
+      ParserNumber::U64(x) => de::Error::invalid_type(Unexpected::Unsigned(x), exp),
+      ParserNumber::I64(x) => de::Error::invalid_type(Unexpected::Signed(x), exp),
+    }
+  }
+}
+
+macro_rules! overflow{
+  ($a:ident * 10 + $b:ident, $c:expr) => {
+    match $c{
+      c => $a >= c / 10 && ($a > c / 10 || $b > c % 10),
+    }
+  };
+}
+
+/// parse number
+impl<'a> Deserializer<'a>{
   fn parse_integer(&mut self, positive: bool) -> Result<ParserNumber, Error>{
     match self.expect_next()?{
       b'0' => {
@@ -590,33 +716,47 @@ impl<'a> Deserializer<'a>{
       Some(_) => Err(self.peek_error(ErrorCode::InvalidNumber)),
       None => value,
     }
-
-    // let value = match tri!(self.peek()) {
-    //   Some(_) => Err(self.peek_error(ErrorCode::InvalidNumber)),
-    //   None => value,
-    // };
-    //
-    // match value {
-    //   Ok(value) => Ok(value),
-    //   // The de::Error impl creates errors with unknown line and column.
-    //   // Fill in the position here by looking at the current index in the
-    //   // input. There is no way to tell whether this should call `error`
-    //   // or `peek_error` so pick the one that seems correct more often.
-    //   // Worst case, the position is off by one character.
-    //   Err(err) => Err(self.fix_position(err)),
-    // }
   }
 
   fn parse_any_number(&mut self, positive: bool) -> Result<ParserNumber, Error>{
     self.parse_integer(positive)
   }
+}
 
 
+fn as_str<'de, 's>(de: &Deserializer<'de>, slice: &'s [u8]) -> Result<&'s str, Error>{
+  str::from_utf8(slice).or_else(|_| Err(de.error(ErrorCode::InvalidUnicodeCodePoint)))
+}
+
+fn is_escape(ch: u8, including_control_characters: bool) -> bool{
+  ch == b'"' || ch == b'\\' || (including_control_characters && ch < 0x20)
+}
 
 
+pub enum Reference<'b, 'c, T>
+where
+  T: ?Sized + 'static,
+{
+  Borrowed(&'b T),
+  Copied(&'c T),
+}
 
+impl<'b, 'c, T> Deref for Reference<'b, 'c, T>
+where
+  T: ?Sized + 'static,
+{
+  type Target = T;
 
+  fn deref(&self) -> &Self::Target {
+    match *self {
+      Reference::Borrowed(b) => b,
+      Reference::Copied(c) => c,
+    }
+  }
+}
 
+/// parse string
+impl<'a> Deserializer<'a>{
   #[cold]
   #[inline(never)]
   fn skip_to_escape_slow(&mut self){
@@ -833,15 +973,10 @@ impl<'a> Deserializer<'a>{
   fn parse_str<'s>(&'s mut self) -> Result<Reference<'a, 's, str>, Error>{
     self.parse_str_bytes(true, as_str)
   }
+}
 
-
-
-
-
-
-
-
-
+/// parse compound
+impl<'a> Deserializer<'a>{
   fn parse_object_colon(&mut self) -> Result<(), Error>{
     match self.parse_whitespace(){
       Some(b':') => {
@@ -851,6 +986,10 @@ impl<'a> Deserializer<'a>{
       Some(_) => Err(self.peek_error(ErrorCode::ExpectedColon)),
       None => Err(self.peek_error(ErrorCode::EofWhileParsingObject)),
     }
+  }
+
+  fn parse_id_map_colon(&mut self) -> Result<(), Error>{
+    self.parse_object_colon()
   }
 
   fn end_array(&mut self) -> Result<(), Error>{
@@ -902,11 +1041,7 @@ impl<'a> Deserializer<'a>{
   }
 }
 
-fn as_str<'de, 's>(de: &Deserializer<'de>, slice: &'s [u8]) -> Result<&'s str, Error>{
-  str::from_utf8(slice).or_else(|_| Err(de.error(ErrorCode::InvalidUnicodeCodePoint)))
-}
-
-
+/// ignore
 impl<'a> Deserializer<'a>{
   fn ignore_value(&mut self) -> Result<(), Error>{
     self.scratch.clear();
@@ -1129,103 +1264,57 @@ impl<'a> Deserializer<'a>{
 }
 
 
+macro_rules! deserialize_number{
+  ($method:ident) => {
+    deserialize_number!($method, deserialize_number);
+  };
 
+  ($method:ident, $using:ident) => {
+    fn $method<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+      V: de::Visitor<'de>,
+    {
+      self.$using(visitor)
+    }
+  };
+}
 
-/// Adds a WTF-8 codepoint to the end of the buffer. This is a more efficient
-/// implementation of String::push. The codepoint may be a surrogate.
-#[inline]
-fn push_wtf8_codepoint(n: u32, scratch: &mut Vec<u8>) {
-  if n < 0x80 {
-    scratch.push(n as u8);
-    return;
-  }
+macro_rules! if_checking_recursion_limit{
+  ($($body:tt)*) => {
+    $($body)*
+  };
+}
 
-  scratch.reserve(4);
-
-  // SAFETY: After the `reserve` call, `scratch` has at least 4 bytes of
-  // allocated but uninitialized memory after its last initialized byte, which
-  // is where `ptr` points. All reachable match arms write `encoded_len` bytes
-  // to that region and update the length accordingly, and `encoded_len` is
-  // always <= 4.
-  unsafe {
-    let ptr = scratch.as_mut_ptr().add(scratch.len());
-
-    let encoded_len = match n {
-      0..=0x7F => unreachable!(),
-      0x80..=0x7FF => {
-        ptr.write(((n >> 6) & 0b0001_1111) as u8 | 0b1100_0000);
-        2
+macro_rules! check_recursion{
+  (($this:ident .$field:ident) $($body:tt)*) => {
+    if_checking_recursion_limit!{
+      $this.$field.remaining_depth -= 1;
+      if $this.$field.remaining_depth == 0 {
+        return Err($this.$field.peek_error(ErrorCode::RecursionLimitExceeded));
       }
-      0x800..=0xFFFF => {
-        ptr.write(((n >> 12) & 0b0000_1111) as u8 | 0b1110_0000);
-        ptr.add(1)
-          .write(((n >> 6) & 0b0011_1111) as u8 | 0b1000_0000);
-        3
+    }
+
+    $this.$field $($body)*
+
+    if_checking_recursion_limit!{
+      $this.$field.remaining_depth += 1;
+    }
+  };
+  ($this:ident $($body:tt)*) => {
+    if_checking_recursion_limit!{
+      $this.remaining_depth -= 1;
+      if $this.remaining_depth == 0 {
+        return Err($this.peek_error(ErrorCode::RecursionLimitExceeded));
       }
-      0x1_0000..=0x10_FFFF => {
-        ptr.write(((n >> 18) & 0b0000_0111) as u8 | 0b1111_0000);
-        ptr.add(1)
-          .write(((n >> 12) & 0b0011_1111) as u8 | 0b1000_0000);
-        ptr.add(2)
-          .write(((n >> 6) & 0b0011_1111) as u8 | 0b1000_0000);
-        4
-      }
-      0x11_0000.. => unreachable!(),
-    };
-    ptr.add(encoded_len - 1)
-      .write((n & 0b0011_1111) as u8 | 0b1000_0000);
+    }
 
-    scratch.set_len(scratch.len() + encoded_len);
-  }
+    $this $($body)*
+
+    if_checking_recursion_limit!{
+      $this.remaining_depth += 1;
+    }
+  };
 }
-
-fn is_escape(ch: u8, including_control_characters: bool) -> bool{
-  ch == b'"' || ch == b'\\' || (including_control_characters && ch < 0x20)
-}
-
-const fn decode_hex_val_slow(val: u8) -> Option<u8>{
-  match val{
-    b'0'..=b'9' => Some(val - b'0'),
-    b'A'..=b'F' => Some(val - b'A' + 10),
-    b'a'..=b'f' => Some(val - b'a' + 10),
-    _ => None,
-  }
-}
-
-const fn build_hex_table(shift: usize) -> [i16; 256]{
-  let mut table = [0; 256];
-  let mut ch = 0;
-  while ch < 256{
-    table[ch] = match decode_hex_val_slow(ch as u8){
-      Some(val) => (val as i16) << shift,
-      None => -1,
-    };
-    ch += 1;
-  }
-  table
-}
-
-static HEX0: [i16; 256] = build_hex_table(0);
-static HEX1: [i16; 256] = build_hex_table(4);
-
-fn decode_four_hex_digits(a: u8, b: u8, c: u8, d: u8) -> Option<u16>{
-  let a = HEX1[a as usize] as i32;
-  let b = HEX0[b as usize] as i32;
-  let c = HEX1[c as usize] as i32;
-  let d = HEX0[d as usize] as i32;
-
-  let codepoint = ((a | b) << 8) | c | d;
-
-  // A single sign bit check.
-  if codepoint >= 0 {
-    Some(codepoint as u16)
-  }else{
-    None
-  }
-}
-
-
-
 
 impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
   type Error = Error;
@@ -1234,13 +1323,6 @@ impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
   where
     V: Visitor<'de>
   {
-    // let peek = match tri!(self.parse_whitespace()) {
-    //   Some(b) => b,
-    //   None => {
-    //     return Err(self.peek_error(ErrorCode::EofWhileParsingValue));
-    //   }
-    // };
-
     match self.expect_parse_whitespace()?{
       b'n' => {
         self.discard();
@@ -1276,9 +1358,7 @@ impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
           b':' => {
             check_recursion!{
               self.discard();
-              /// TODO
-              // let ret = visitor.visit_newtype_struct(SeqAccess::new(self));
-              let ret = visitor.visit_seq(SeqAccess::new(self));
+              let ret = visitor.visit_map(IdMapAccess::new(self));
             }
 
             match (ret, self.end_id_map()){
@@ -1312,16 +1392,6 @@ impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
       }
       _ => Err(self.peek_error(ErrorCode::ExpectedSomeValue)),
     }
-
-    // match value {
-    //   Ok(value) => Ok(value),
-    //   // The de::Error impl creates errors with unknown line and column.
-    //   // Fill in the position here by looking at the current index in the
-    //   // input. There is no way to tell whether this should call `error`
-    //   // or `peek_error` so pick the one that seems correct more often.
-    //   // Worst case, the position is off by one character.
-    //   Err(err) => Err(self.fix_position(err)),
-    // }
   }
 
   fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -1444,6 +1514,7 @@ impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
   where
     V: Visitor<'de>
   {
+    let _ = name;
     self.deserialize_unit(visitor)
   }
 
@@ -1451,9 +1522,6 @@ impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
   where
     V: Visitor<'de>
   {
-    // let _ = name;
-    // visitor.visit_newtype_struct(self)
-
     match name{
       ID_MAP_TOKEN => {
         visitor.visit_newtype_struct(IdMapDeserializer{de: self})
@@ -1488,6 +1556,7 @@ impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
   where
     V: Visitor<'de>
   {
+    let _ = len;
     self.deserialize_seq(visitor)
   }
 
@@ -1495,6 +1564,8 @@ impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
   where
     V: Visitor<'de>
   {
+    let _ = name;
+    let _ = len;
     self.deserialize_seq(visitor)
   }
 
@@ -1522,6 +1593,9 @@ impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
   where
     V: Visitor<'de>
   {
+    let _ = name;
+    let _ = fields;
+    
     match self.expect_parse_whitespace()?{
       b'[' => {
         check_recursion!{
@@ -1553,6 +1627,9 @@ impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
   where
     V: Visitor<'de>
   {
+    let _ = name;
+    let _ = variants;
+    
     match self.expect_parse_whitespace()?{
       b'{' => {
         check_recursion!{
@@ -1590,10 +1667,6 @@ impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
     visitor.visit_unit()
   }
 }
-
-
-
-
 
 
 
@@ -1699,7 +1772,7 @@ impl<'de, 'a> de::MapAccess<'de> for MapAccess<'de, 'a>{
     }
 
     if has_next_key(self)? {
-      Ok(Some(seed.deserialize(MapKey{de: &mut *self.de})?))
+      Ok(Some(seed.deserialize(MapKeyDeserializer{de: &mut *self.de})?))
     }else{
       Ok(None)
     }
@@ -1746,18 +1819,11 @@ impl<'de, 'a> de::MapAccess<'de> for IdMapAccess<'de, 'a>{
         Ok(false)
       }else if map.first{
         map.first = false;
-        // if peek == b'"' {
-        //   Ok(true)
-        // }else{
-        //   Err(map.de.peek_error(ErrorCode::IdMapKeyMustBeAnInteger))
-        // }
         Ok(true)
       }else if peek == b',' {
         map.de.discard();
         match map.de.parse_whitespace(){
-          // Some(b'"') => Ok(true),
           Some(b']') => Err(map.de.peek_error(ErrorCode::TrailingComma)),
-          // Some(_) => Err(map.de.peek_error(ErrorCode::IdMapKeyMustBeAnInteger)),
           Some(_) => Ok(true),
           None => Err(map.de.peek_error(ErrorCode::EofWhileParsingValue)),
         }
@@ -1777,7 +1843,7 @@ impl<'de, 'a> de::MapAccess<'de> for IdMapAccess<'de, 'a>{
   where
     V: de::DeserializeSeed<'de>,
   {
-    self.de.parse_object_colon()?;
+    self.de.parse_id_map_colon()?;
 
     seed.deserialize(&mut *self.de)
   }
@@ -1902,7 +1968,7 @@ impl<'de, 'a> de::VariantAccess<'de> for UnitVariantAccess<'de, 'a>{
 
 /// Only deserialize from this after peeking a '"' byte! Otherwise it may
 /// deserialize invalid JSON successfully.
-struct MapKey<'de, 'a>{
+struct MapKeyDeserializer<'de, 'a>{
   de: &'a mut Deserializer<'de>,
 }
 
@@ -1939,11 +2005,11 @@ macro_rules! deserialize_numeric_key{
     }
   };
 }
-impl<'de, 'a> MapKey<'de, 'a>{
+impl<'de, 'a> MapKeyDeserializer<'de, 'a>{
   deserialize_numeric_key!(deserialize_number, deserialize_number);
 }
 
-impl<'de, 'a> de::Deserializer<'de> for MapKey<'de, 'a>{
+impl<'de, 'a> de::Deserializer<'de> for MapKeyDeserializer<'de, 'a>{
   type Error = Error;
 
   #[inline]
@@ -2045,7 +2111,6 @@ impl<'de, 'a> de::Deserializer<'de> for MapKey<'de, 'a>{
 
 
 
-
 struct IdMapDeserializer<'de, 'a>{
   de: &'a mut Deserializer<'de>,
 }
@@ -2053,101 +2118,22 @@ struct IdMapDeserializer<'de, 'a>{
 impl<'de, 'a> de::Deserializer<'de> for IdMapDeserializer<'de, 'a>{
   type Error = Error;
 
-  delegate!{
-    to self.de{
-      fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_unit_struct<V>(self, name: &'static str, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_newtype_struct<V>(self, name: &'static str, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_tuple_struct<V>(self, name: &'static str, len: usize, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_struct<V>(self, name: &'static str, fields: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_enum<V>(self, name: &'static str, variants: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-      fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-      where
-        V: Visitor<'de>;
-    }
+  fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+  where
+    V: Visitor<'de>
+  {
+    Err(self.de.peek_invalid_type(&visitor))
   }
 
+  forward_to_deserialize_any!{
+    bool
+    i8 i16 i32 i64 i128
+    u8 u16 u32 u64 u128
+    f32 f64
+    char str string bytes byte_buf
+    option unit unit_struct newtype_struct seq tuple tuple_struct struct
+    enum identifier ignored_any
+  }
 
   fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
   where
@@ -2158,13 +2144,10 @@ impl<'de, 'a> de::Deserializer<'de> for IdMapDeserializer<'de, 'a>{
         self.de.discard();
         match self.de.expect_peek()?{
           b':' => {
-            /// TODO
-            // check_recursion!{
-            //   self.de.discard();
-            //   let ret = visitor.visit_map(MapAccess::new(self));
-            // }
-            self.de.discard();
-            let ret = visitor.visit_map(IdMapAccess::new(self.de));
+            check_recursion!{
+              (self.de).discard();
+              let ret = visitor.visit_map(IdMapAccess::new(self.de));
+            }
 
             match (ret, self.de.end_id_map()){
               (Ok(ret), Ok(())) => Ok(ret),
@@ -2174,111 +2157,10 @@ impl<'de, 'a> de::Deserializer<'de> for IdMapDeserializer<'de, 'a>{
           _ => Err(self.de.peek_invalid_type(&visitor)),
         }
       }
-      _ => Err(self.de.peek_invalid_type(&visitor)),
+      _ => Err(self.de.peek_error(ErrorCode::ExpectedColonAtStart)),
     }
   }
 }
-
-
-
-
-pub struct Position{
-  pub line: usize,
-  pub column: usize,
-}
-
-pub enum Reference<'b, 'c, T>
-where
-  T: ?Sized + 'static,
-{
-  Borrowed(&'b T),
-  Copied(&'c T),
-}
-
-impl<'b, 'c, T> Deref for Reference<'b, 'c, T>
-where
-  T: ?Sized + 'static,
-{
-  type Target = T;
-
-  fn deref(&self) -> &Self::Target {
-    match *self {
-      Reference::Borrowed(b) => b,
-      Reference::Copied(c) => c,
-    }
-  }
-}
-
-
-pub(crate) enum ParserNumber{
-  F64(f64),
-  U64(u64),
-  I64(i64),
-}
-
-impl ParserNumber {
-  fn visit<'de, V>(self, visitor: V) -> Result<V::Value, Error>
-  where
-    V: de::Visitor<'de>,
-  {
-    match self {
-      ParserNumber::F64(x) => visitor.visit_f64(x),
-      ParserNumber::U64(x) => visitor.visit_u64(x),
-      ParserNumber::I64(x) => visitor.visit_i64(x),
-    }
-  }
-
-  fn invalid_type(self, exp: &dyn Expected) -> Error{
-    match self {
-      ParserNumber::F64(x) => de::Error::invalid_type(Unexpected::Float(x), exp),
-      ParserNumber::U64(x) => de::Error::invalid_type(Unexpected::Unsigned(x), exp),
-      ParserNumber::I64(x) => de::Error::invalid_type(Unexpected::Signed(x), exp),
-    }
-  }
-}
-
-static POW10: [f64; 309] = [
-  1e000, 1e001, 1e002, 1e003, 1e004, 1e005, 1e006, 1e007, 1e008, 1e009, //
-  1e010, 1e011, 1e012, 1e013, 1e014, 1e015, 1e016, 1e017, 1e018, 1e019, //
-  1e020, 1e021, 1e022, 1e023, 1e024, 1e025, 1e026, 1e027, 1e028, 1e029, //
-  1e030, 1e031, 1e032, 1e033, 1e034, 1e035, 1e036, 1e037, 1e038, 1e039, //
-  1e040, 1e041, 1e042, 1e043, 1e044, 1e045, 1e046, 1e047, 1e048, 1e049, //
-  1e050, 1e051, 1e052, 1e053, 1e054, 1e055, 1e056, 1e057, 1e058, 1e059, //
-  1e060, 1e061, 1e062, 1e063, 1e064, 1e065, 1e066, 1e067, 1e068, 1e069, //
-  1e070, 1e071, 1e072, 1e073, 1e074, 1e075, 1e076, 1e077, 1e078, 1e079, //
-  1e080, 1e081, 1e082, 1e083, 1e084, 1e085, 1e086, 1e087, 1e088, 1e089, //
-  1e090, 1e091, 1e092, 1e093, 1e094, 1e095, 1e096, 1e097, 1e098, 1e099, //
-  1e100, 1e101, 1e102, 1e103, 1e104, 1e105, 1e106, 1e107, 1e108, 1e109, //
-  1e110, 1e111, 1e112, 1e113, 1e114, 1e115, 1e116, 1e117, 1e118, 1e119, //
-  1e120, 1e121, 1e122, 1e123, 1e124, 1e125, 1e126, 1e127, 1e128, 1e129, //
-  1e130, 1e131, 1e132, 1e133, 1e134, 1e135, 1e136, 1e137, 1e138, 1e139, //
-  1e140, 1e141, 1e142, 1e143, 1e144, 1e145, 1e146, 1e147, 1e148, 1e149, //
-  1e150, 1e151, 1e152, 1e153, 1e154, 1e155, 1e156, 1e157, 1e158, 1e159, //
-  1e160, 1e161, 1e162, 1e163, 1e164, 1e165, 1e166, 1e167, 1e168, 1e169, //
-  1e170, 1e171, 1e172, 1e173, 1e174, 1e175, 1e176, 1e177, 1e178, 1e179, //
-  1e180, 1e181, 1e182, 1e183, 1e184, 1e185, 1e186, 1e187, 1e188, 1e189, //
-  1e190, 1e191, 1e192, 1e193, 1e194, 1e195, 1e196, 1e197, 1e198, 1e199, //
-  1e200, 1e201, 1e202, 1e203, 1e204, 1e205, 1e206, 1e207, 1e208, 1e209, //
-  1e210, 1e211, 1e212, 1e213, 1e214, 1e215, 1e216, 1e217, 1e218, 1e219, //
-  1e220, 1e221, 1e222, 1e223, 1e224, 1e225, 1e226, 1e227, 1e228, 1e229, //
-  1e230, 1e231, 1e232, 1e233, 1e234, 1e235, 1e236, 1e237, 1e238, 1e239, //
-  1e240, 1e241, 1e242, 1e243, 1e244, 1e245, 1e246, 1e247, 1e248, 1e249, //
-  1e250, 1e251, 1e252, 1e253, 1e254, 1e255, 1e256, 1e257, 1e258, 1e259, //
-  1e260, 1e261, 1e262, 1e263, 1e264, 1e265, 1e266, 1e267, 1e268, 1e269, //
-  1e270, 1e271, 1e272, 1e273, 1e274, 1e275, 1e276, 1e277, 1e278, 1e279, //
-  1e280, 1e281, 1e282, 1e283, 1e284, 1e285, 1e286, 1e287, 1e288, 1e289, //
-  1e290, 1e291, 1e292, 1e293, 1e294, 1e295, 1e296, 1e297, 1e298, 1e299, //
-  1e300, 1e301, 1e302, 1e303, 1e304, 1e305, 1e306, 1e307, 1e308,
-];
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2290,7 +2172,7 @@ where
   let value = de::Deserialize::deserialize(&mut de)?;
 
   // Make sure the whole stream has been consumed.
-  // de.end()?;
+  de.end()?;
   Ok(value)
 }
 
@@ -2301,6 +2183,3 @@ where
 {
   from_slice(s.as_ref())
 }
-
-
-
