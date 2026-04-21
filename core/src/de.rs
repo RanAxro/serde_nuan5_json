@@ -1595,7 +1595,7 @@ impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
   {
     let _ = name;
     let _ = fields;
-    
+
     match self.expect_parse_whitespace()?{
       b'[' => {
         check_recursion!{
@@ -1629,7 +1629,7 @@ impl<'de> de::Deserializer<'de> for &mut Deserializer<'de>{
   {
     let _ = name;
     let _ = variants;
-    
+
     match self.expect_parse_whitespace()?{
       b'{' => {
         check_recursion!{
