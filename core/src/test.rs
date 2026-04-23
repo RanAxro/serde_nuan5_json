@@ -1,6 +1,9 @@
+use serde::__private228::de::Content::String;
+use serde::de::Unexpected::Str;
 use crate::ext_type::*;
 use crate::{de, ser};
 use crate::structs::image_custom_data::*;
+use crate::structs::share_code::*;
 
 #[test]
 fn test_1(){
@@ -91,5 +94,36 @@ fn test_1(){
     }
     _ => {}
   }
+  // println!("{}", v);
+}
+
+
+
+#[test]
+fn test_2(){
+
+  let t = "[{\"RoleID\":\"108328049\",\"TimeStamp\":1776261333.6336,\"ShareCode\":\"18otHv5nilc#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1776261317.6222,\"ShareCode\":\"18otfOV8T0o#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1776261259.1727,\"ShareCode\":\"18ot6FlYaao#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1772101678.5011,\"ShareCode\":\"1z0h9nkpKxV#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1772101618.9272,\"ShareCode\":\"1z0XlZCthe1#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1759042841.9844,\"ShareCode\":\"1KD94miaNxV#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1759042772.1247,\"ShareCode\":\"1KDTllkoJMZ#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1754713723.2667,\"ShareCode\":\"1ROS4VKliAH#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1776326096.8062,\"ShareCode\":\"186cGjd87IR#\"}]";
+
+  let s: DiyHistoryShareCodeBox = de::from_str(&t).unwrap();
+  let st = ser::to_string_pretty(&s).unwrap();
+
+  println!("{}", st);
+
+  // let t = ser::to_string_pretty(&r_t).unwrap();
+  // print!("{}", t);
+  // let v = de::from_str::<NikkiPhotoCustomData>(&t).unwrap();
+  // match v.social_photo {
+  //   Some(social_photo) => {
+  //     println!("{}", social_photo.photo_info.camera_actor_loc_x);
+  //     println!("{}", social_photo.camera_params);
+  //   }
+  //   _ => {}
+  // }
+  // match v.interactive_photo{
+  //   Some(interactive_photo) => {
+  //     println!("{:?}", interactive_photo.get(&27));
+  //   }
+  //   _ => {}
+  // }
   // println!("{}", v);
 }
