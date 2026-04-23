@@ -66,12 +66,18 @@ pub struct DIYCustomData{
   pub content: Content,
 }
 
+pub type PendingUpCustomData = DIYCustomData;
+
 
 
 
 
 #[derive(Serialize, Deserialize)]
 pub struct Content{
+  #[serde(rename = "PoseId")]
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub pose_id: Option<i64>,
+
   #[serde(rename = "patternData")]
   pub pattern_data: IdMap<i64>,
 

@@ -108,22 +108,4 @@ fn test_2(){
   let st = ser::to_string_pretty(&s).unwrap();
 
   println!("{}", st);
-
-  // let t = ser::to_string_pretty(&r_t).unwrap();
-  // print!("{}", t);
-  // let v = de::from_str::<NikkiPhotoCustomData>(&t).unwrap();
-  // match v.social_photo {
-  //   Some(social_photo) => {
-  //     println!("{}", social_photo.photo_info.camera_actor_loc_x);
-  //     println!("{}", social_photo.camera_params);
-  //   }
-  //   _ => {}
-  // }
-  // match v.interactive_photo{
-  //   Some(interactive_photo) => {
-  //     println!("{:?}", interactive_photo.get(&27));
-  //   }
-  //   _ => {}
-  // }
-  // println!("{}", v);
 }
