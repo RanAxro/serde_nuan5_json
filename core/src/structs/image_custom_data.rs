@@ -66,10 +66,6 @@ pub struct DIYCustomData{
   pub content: Content,
 }
 
-pub type PendingUpCustomData = DIYCustomData;
-
-
-
 
 
 #[derive(Serialize, Deserialize)]
