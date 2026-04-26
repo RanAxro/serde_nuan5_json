@@ -2,6 +2,7 @@ use serde::__private228::de::Content::String;
 use serde::de::Unexpected::Str;
 use crate::ext_type::*;
 use crate::{de, ser};
+use crate::structs::camera_params::CameraParams;
 use crate::structs::image_custom_data::*;
 use crate::structs::share_code::*;
 
@@ -107,5 +108,17 @@ fn test_2(){
   let s: DiyHistoryShareCodeBox = de::from_str(&t).unwrap();
   let st = ser::to_string_pretty(&s).unwrap();
 
+  println!("{}", st);
+}
+
+#[test]
+fn test_3(){
+
+  let t = "[1,0,-128.84,57.42,216.3,-20.57,-24.02,0,-128.84,57.42,216.3,-25.41,-20.27,0,0.55,15,1.32,\"None\",0.5,0.4,1,0,1,0,1,-0.55,0,0.35,-0.17,\"None\",1]";
+  
+  let s: CameraParams = de::from_str(&t).unwrap();
+  let st = ser::to_string_pretty(&s).unwrap();
+
+  println!("{:?}", s);
   println!("{}", st);
 }
