@@ -63,3 +63,23 @@ pub struct VideoRecordData{
   #[serde(rename = "ViewportWidth")]
   pub viewport_width: u64,
 }
+
+
+
+#[derive(Serialize, Deserialize)]
+pub struct VideoCoverCustomData{
+  #[serde(rename = "VideoCoverData")]
+  pub video_cover_data: VideoCoverData,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct VideoCoverData{
+  #[serde(rename = "RoleID")]
+  pub role_id: u64,
+
+  #[serde(rename = "CreateTime")]
+  pub create_time: u64,
+
+  #[serde(rename = "videoCustomData")]
+  pub video_custom_data: VideoRecordData,
+}
