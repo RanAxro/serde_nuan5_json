@@ -8,6 +8,7 @@ pub struct NikkiPhotoCustomData{
   #[serde(skip_serializing_if = "Option::is_none")]
   pub edit_photo_handler: Option<EditPhotoHandler>,
 
+  #[serde(rename = "InteractivePhoto")]
   #[serde(skip_serializing_if = "Option::is_none")]
   pub interactive_photo: Option<IdMap<bool>>,
 
