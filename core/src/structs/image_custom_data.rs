@@ -329,12 +329,12 @@ pub enum CoreData{
 #[derive(Serialize, Deserialize)]
 pub struct HairCoreData{
   #[serde(rename = "TargetColor0")]
-  pub target_color_0: Color,
+  pub target_color_0: Option<Color>,
 
   #[serde(rename = "ColorGridID0")]
   pub color_grid_id_0: i64,
 
-  #[serde(rename = "TargetColor0")]
+  #[serde(rename = "TargetColor1")]
   pub target_color_1: Option<Color>,
 
   #[serde(rename = "ColorGridID1")]
