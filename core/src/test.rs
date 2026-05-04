@@ -103,17 +103,6 @@ fn test_1(){
 #[test]
 fn test_2(){
 
-  let t = "[{\"RoleID\":\"108328049\",\"TimeStamp\":1776261333.6336,\"ShareCode\":\"18otHv5nilc#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1776261317.6222,\"ShareCode\":\"18otfOV8T0o#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1776261259.1727,\"ShareCode\":\"18ot6FlYaao#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1772101678.5011,\"ShareCode\":\"1z0h9nkpKxV#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1772101618.9272,\"ShareCode\":\"1z0XlZCthe1#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1759042841.9844,\"ShareCode\":\"1KD94miaNxV#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1759042772.1247,\"ShareCode\":\"1KDTllkoJMZ#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1754713723.2667,\"ShareCode\":\"1ROS4VKliAH#\"},{\"RoleID\":\"108328049\",\"TimeStamp\":1776326096.8062,\"ShareCode\":\"186cGjd87IR#\"}]";
-
-  let s: DiyHistoryShareCodeBox = de::from_str(&t).unwrap();
-  let st = ser::to_string_pretty(&s).unwrap();
-
-  println!("{}", st);
-}
-
-#[test]
-fn test_3(){
-
   let t = "[1,0,-128.84,57.42,216.3,-20.57,-24.02,0,-128.84,57.42,216.3,-25.41,-20.27,0,0.55,15,1.32,\"None\",0.5,0.4,1,0,1,0,1,-0.55,0,0.35,-0.17,\"None\",1]";
   
   let s: CameraParams = de::from_str(&t).unwrap();

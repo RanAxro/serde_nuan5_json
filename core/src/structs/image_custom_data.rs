@@ -334,14 +334,17 @@ pub struct HairCoreData{
   #[serde(rename = "ColorGridID0")]
   pub color_grid_id_0: i64,
 
+  #[serde(rename = "TargetColor0")]
+  pub target_color_1: Option<Color>,
+
+  #[serde(rename = "ColorGridID1")]
+  pub color_grid_id_1: Option<i64>,
+
   #[serde(rename = "RoughnessOffset")]
   pub roughness_offset: f64,
 
-  #[serde(rename = "ColorGridID1")]
-  pub color_grid_id_1: i64,
-
   #[serde(rename = "HairColorMode")]
-  pub hair_color_mode: i64,
+  pub hair_color_mode: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize)]
