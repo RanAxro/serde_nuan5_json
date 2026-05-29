@@ -111,3 +111,31 @@ fn test_2(){
   println!("{:?}", s);
   println!("{}", st);
 }
+
+
+
+#[test]
+fn test_3(){
+
+  let t = "[1,0,-128.84,57.42,216.3,-20.57,-24.02,0,-128.84,57.42,216.3,-25.41,-20.27,0,0.55,15,1.32,\"None\",0.5,0.4,1,0,1,0,1,-0.55,0,0.35,-0.17,\"None\",1,0]";
+
+  let s: CameraParams = de::from_str(&t).unwrap();
+  let st = ser::to_string_pretty(&s).unwrap();
+
+  println!("{:?}", s);
+  println!("{}", st);
+}
+
+
+
+#[test]
+fn test_4(){
+
+  let t = "[1,0,385.94,-88.28,157.01,0.64,167.11,0,385.94,-88.28,157.01,-8.19,167.11,0,0.12,15,0,\"None\",0.5,0.4,8,0,0.58,0,0.99,-0.55,0,0.35,-0.17,\"None\",1,1,0,0.12,0.01,0,0,1,1,1]";
+
+  let s: CameraParams = de::from_str(&t).unwrap();
+  let st = ser::to_string_pretty(&s).unwrap();
+
+  println!("{:?}", s);
+  println!("{}", st);
+}
