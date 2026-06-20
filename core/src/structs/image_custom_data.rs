@@ -390,7 +390,8 @@ pub struct SpecialEffectCoreData{
   pub color_grid_id: i64,
 
   #[serde(rename = "CoverDIYColor")]
-  pub cover_diy_color: bool,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub cover_diy_color: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize)]

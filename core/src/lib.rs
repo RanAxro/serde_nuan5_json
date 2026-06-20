@@ -1,8 +1,8 @@
 
 
-mod structs;
-mod ext_type;
-mod ser;
-mod de;
-mod error;
+pub mod structs;
+pub mod ext_type;
+pub mod ser;
+pub mod de;
+pub mod error;
 mod test;
