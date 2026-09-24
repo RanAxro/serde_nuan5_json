@@ -1,10 +1,7 @@
-use serde::__private228::de::Content::String;
-use serde::de::Unexpected::Str;
 use crate::ext_type::*;
 use crate::{de, ser};
 use crate::structs::camera_params::CameraParams;
 use crate::structs::image_custom_data::*;
-use crate::structs::share_code::*;
 
 #[test]
 fn test_1(){
@@ -74,6 +71,9 @@ fn test_1(){
         hour: 0,
         min: 0,
         sec: 0.0,
+      },
+      track_info: TrackInfo{
+        world_id: 1,
       },
       weapon_snap_shot: None,
       weather_type: 0,

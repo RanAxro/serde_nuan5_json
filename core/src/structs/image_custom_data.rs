@@ -183,6 +183,9 @@ pub struct SocialPhoto{
   #[serde(rename = "Time")]
   pub time: Time,
 
+  #[serde(rename = "TrackInfo")]
+  pub track_info: TrackInfo,
+
   #[serde(rename = "WeaponSnapShot")]
   #[serde(skip_serializing_if = "Option::is_none")]
   pub weapon_snap_shot: Option<WeaponSnapShot>,
@@ -287,6 +290,12 @@ pub struct Time{
   pub hour: u8,
   pub min: u8,
   pub sec: f64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TrackInfo{
+  #[serde(rename = "WorldID")]
+  pub world_id: i64,
 }
 
 #[derive(Serialize, Deserialize)]
