@@ -525,7 +525,7 @@ pub enum CameraParamsV3MomoHidden{
 pub struct CameraParamsV3NikkiPoseInfo{
   pub pose_id: i64,                     // 41
   pub playing_percent: Option<f64>,     // 42
-  pub in_idle: bool,                    // 43
+  pub in_idle: u8,                      // 43
 }
 
 impl Serialize for CameraParamsV3{
@@ -582,7 +582,7 @@ impl Serialize for CameraParamsV3{
               seq.serialize_element("")?;
             },
           }
-          seq.serialize_element(if info.in_idle { &1 } else { &0 })
+          seq.serialize_element(&info.in_idle)
         },
         None => {
           seq.serialize_element("")?;   // 41
@@ -760,7 +760,7 @@ impl<'de> Deserialize<'de> for CameraParamsV3{
                 NikkiPoseInfoValue::Num(playing_percent) => Some(playing_percent),
                 _ => None,
               },
-              in_idle: state == 1.0,
+              in_idle: state as u8,
             })
           },
           _ => None,
