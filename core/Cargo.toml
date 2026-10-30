@@ -9,6 +9,7 @@ edition = "2024"
 [dependencies]
 serde_nuan5json_macro = { path = "../macros" }
 serde = { version = "1.0", features = ["derive"] }
+serde_repr = "0.1.21"
 delegate = "0.13.5"
 itoa = "1.0.18"
 ryu = "1.0.23"

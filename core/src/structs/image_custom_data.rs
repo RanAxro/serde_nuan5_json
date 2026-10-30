@@ -1,6 +1,7 @@
 use serde::{Serialize, Deserialize};
 use serde_nuan5json_macro::with_transform_fields;
 use crate::ext_type::*;
+use super::enumerations::*;
 
 #[derive(Serialize, Deserialize)]
 pub struct NikkiPhotoCustomData{
@@ -11,6 +12,13 @@ pub struct NikkiPhotoCustomData{
   #[serde(rename = "InteractivePhoto")]
   #[serde(skip_serializing_if = "Option::is_none")]
   pub interactive_photo: Option<IdMap<bool>>,
+
+  #[serde(rename = "MultiPlayerHandler")]
+  pub multi_player_handler: Option<MultiPlayerHandler>,
+
+  #[serde(rename = "NormalPhotoInfo")]
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub normal_photo_info: Option<NormalPhotoInfo>,
 
   #[serde(rename = "PhotoWallPlugin")]
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -131,6 +139,72 @@ pub struct EditPhotoHandler{
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct MultiPlayerHandler{
+  #[serde(rename = "RoleID")]
+  pub role_id: i64,
+
+  #[serde(rename = "PoseID")]
+  pub pose_id: OptionValue<i64>,
+
+  #[serde(rename = "PosePlayingPercent")]
+  pub pose_playing_percent: OptionValue<f64>,
+
+  #[serde(rename = "LocalPoseID")]
+  pub local_pose_id: OptionValue<i64>,
+
+  #[serde(rename = "LocalPlayType")]
+  pub local_play_type: DuoMotionPlayType,
+
+  #[serde(rename = "OtherPlayType")]
+  pub other_play_type: DuoMotionPlayType,
+
+  #[serde(rename = "LocalTransforms")]
+  pub local_transforms: Option<String>
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct NormalPhotoInfo{
+  #[serde(rename = "PhotoMode")]
+  pub photo_mode: PhotoMode,
+
+  #[serde(rename = "PlaceableObjIDs")]
+  pub placeable_obj_ids: AdaptiveArray<String>,
+
+  #[serde(rename = "WindIntensity")]
+  pub wind_intensity: WindIntensity,
+
+  #[serde(rename = "WindDirection")]
+  pub wind_direction: WindDirection,
+
+  #[serde(rename = "Time")]
+  pub time: Option<Time>,
+
+  #[serde(rename = "WeatherType")]
+  weather_type: Option<WeatherType>,
+
+  #[serde(rename = "PhotoInfo")]
+  photo_info: Option<NormalOutfitInfo>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct NormalOutfitInfo{
+  #[serde(rename = "IsOutfitReplayable")]
+  pub is_outfit_replayable: bool,
+
+  #[serde(rename = "nikkiClothes")]
+  pub nikki_clothes: AdaptiveArray<i64>,
+
+  #[serde(rename = "nikkiDIY")]
+  pub nikki_diy: AdaptiveArray<NikkiDIY>,
+
+  #[serde(rename = "magicballColorIds")]
+  pub magicball_color_ids: Option<AdaptiveArray<i64>>,
+
+  #[serde(rename = "nikkiWeaponTagName")]
+  pub nikki_weapon_tag_name: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct PhotoWallPlugin{
   #[serde(rename = "photoID")]
   pub photo_id: AdaptiveArray<i64>,
@@ -191,7 +265,7 @@ pub struct SocialPhoto{
   pub weapon_snap_shot: Option<WeaponSnapShot>,
 
   #[serde(rename = "WeatherType")]
-  pub weather_type: i64,
+  pub weather_type: WeatherType,
 }
 
 #[with_transform_fields(loc = 3, scale = 3, rot = 3)]

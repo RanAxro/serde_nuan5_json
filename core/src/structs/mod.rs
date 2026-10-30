@@ -3,3 +3,4 @@ pub mod share_code;
 pub mod video_custom_data;
 pub mod camera_params;
 pub mod build_data;
+pub mod enumerations;

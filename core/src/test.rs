@@ -1,6 +1,7 @@
 use crate::ext_type::*;
 use crate::{de, ser};
 use crate::structs::camera_params::CameraParams;
+use crate::structs::enumerations::WeatherType;
 use crate::structs::image_custom_data::*;
 
 #[test]
@@ -17,6 +18,8 @@ fn test_1(){
     }),
     // interactive_photo: None,
     interactive_photo: Option::from(t_m),
+    multi_player_handler: None,
+    normal_photo_info: None,
     photo_wall_plugin: None,
     portrait_mode_handler: None,
     puzzle_game_plugin: None,
@@ -76,7 +79,7 @@ fn test_1(){
         world_id: 1,
       },
       weapon_snap_shot: None,
-      weather_type: 0,
+      weather_type: WeatherType::Cloudy,
     }),
   };
   let t = ser::to_string_pretty(&r_t).unwrap();
