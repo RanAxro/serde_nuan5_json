@@ -574,8 +574,15 @@ impl Serialize for CameraParamsV3{
       match &s.nikki_pose_info{
         Some(info) => {
           seq.serialize_element(&info.pose_id)?;
-          seq.serialize_element(&info.playing_percent)?;
-          seq.serialize_element(&info.in_idle)
+          match &info.playing_percent{
+            Some(p) => {
+              seq.serialize_element(p)?;
+            },
+            None => {
+              seq.serialize_element("")?;
+            },
+          }
+          seq.serialize_element(if info.in_idle { &1 } else { &0 })
         },
         None => {
           seq.serialize_element("")?;   // 41
