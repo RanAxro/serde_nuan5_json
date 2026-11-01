@@ -67,6 +67,7 @@ impl<'de, T: Serialize + DeserializeOwned> Deserialize<'de> for OptionValue<T>{
     D: Deserializer<'de>
   {
     #[derive(Deserialize)]
+    #[serde(untagged)]
     enum TemporaryOptionValue<T>{
       Value(T),
       None(String),
